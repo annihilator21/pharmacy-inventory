@@ -1,0 +1,104 @@
+erDiagram
+    categories ||--o{ medicines : classifies
+    suppliers ||--o{ batches : supplies
+    medicines ||--o{ batches : "is stocked as"
+    customers |o--o{ sales : makes
+    staff ||--o{ sales : processes
+    sales ||--|{ sale_items : contains
+    batches ||--o{ sale_items : "is sold from"
+    suppliers ||--o{ purchase_orders : "receives"
+    purchase_orders ||--|{ purchase_order_items : lists
+    medicines ||--o{ purchase_order_items : "is ordered in"
+    medicines ||--o{ demand_forecasts : "has forecast"
+    medicines ||--o{ stock_alerts : "raises"
+
+    categories {
+        int category_id PK
+        varchar name UK
+        text description
+    }
+    suppliers {
+        int supplier_id PK
+        varchar name
+        varchar phone UK
+        varchar email UK
+        varchar city
+    }
+    staff {
+        int staff_id PK
+        varchar full_name
+        varchar role
+        varchar phone UK
+        date hired_on
+    }
+    customers {
+        int customer_id PK
+        varchar full_name
+        varchar phone UK
+        varchar email UK
+        date registered_on
+    }
+    medicines {
+        int medicine_id PK
+        varchar name
+        varchar generic_name
+        int category_id FK
+        varchar manufacturer
+        numeric unit_price
+        int reorder_level
+        boolean requires_prescription
+    }
+    batches {
+        int batch_id PK
+        int medicine_id FK
+        int supplier_id FK
+        varchar batch_no
+        int quantity_in_stock
+        numeric purchase_price
+        date received_date
+        date expiry_date
+    }
+    sales {
+        int sale_id PK
+        int customer_id FK
+        int staff_id FK
+        timestamptz sale_date
+        varchar payment_mode
+        numeric total_amount
+    }
+    sale_items {
+        int sale_item_id PK
+        int sale_id FK
+        int batch_id FK
+        int quantity
+        numeric unit_price
+    }
+    purchase_orders {
+        int po_id PK
+        int supplier_id FK
+        date order_date
+        varchar status
+    }
+    purchase_order_items {
+        int po_item_id PK
+        int po_id FK
+        int medicine_id FK
+        int quantity
+        numeric unit_cost
+    }
+    demand_forecasts {
+        int forecast_id PK
+        int medicine_id FK
+        date forecast_month
+        int predicted_qty
+        varchar method
+        timestamptz generated_at
+    }
+    stock_alerts {
+        int alert_id PK
+        int medicine_id FK
+        varchar alert_type
+        text message
+        timestamptz created_at
+        boolean resolved
+    }
