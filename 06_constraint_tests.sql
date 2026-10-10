@@ -98,3 +98,26 @@ BEGIN
     EXCEPTION WHEN SQLSTATE 'XX998' THEN NULL;
     END;
 END $$;
+
+-- ---- One more positive test: new stock resolves an open low-stock alert ----
+DO $$
+DECLARE
+    v_open_before INT;
+    v_open_after  INT;
+BEGIN
+    SELECT count(*) INTO v_open_before FROM stock_alerts
+     WHERE medicine_id = 11 AND alert_type = 'low_stock' AND NOT resolved;
+    BEGIN
+        INSERT INTO batches(medicine_id, supplier_id, batch_no, quantity_in_stock, purchase_price, received_date, expiry_date)
+        VALUES (11, 2, 'TEST-RESTOCK', 50, 480, CURRENT_DATE, CURRENT_DATE + 365);
+        SELECT count(*) INTO v_open_after FROM stock_alerts
+         WHERE medicine_id = 11 AND alert_type = 'low_stock' AND NOT resolved;
+        IF v_open_before = 1 AND v_open_after = 0 THEN
+            RAISE NOTICE 'PASS | restocking resolves the open low-stock alert (open alerts % -> %)', v_open_before, v_open_after;
+        ELSE
+            RAISE NOTICE 'FAIL | open low-stock alerts went from % to %', v_open_before, v_open_after;
+        END IF;
+        RAISE EXCEPTION 'undo' USING ERRCODE = 'XX998';   -- roll the test batch back
+    EXCEPTION WHEN SQLSTATE 'XX998' THEN NULL;
+    END;
+END $$;
