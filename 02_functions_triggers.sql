@@ -130,7 +130,7 @@ BEGIN
                         WHERE medicine_id = r.medicine_id
                           AND alert_type = r.kind
                           AND NOT resolved
-                          AND message LIKE '%batch ' || r.batch_no || '%') THEN
+                          AND message LIKE '% batch ' || r.batch_no || ' (%') THEN
             INSERT INTO stock_alerts(medicine_id, alert_type, message)
             VALUES (r.medicine_id, r.kind,
                     format('%s batch %s (%s units) %s on %s',
@@ -179,3 +179,73 @@ BEGIN
     RETURN v_rows;
 END;
 $$ LANGUAGE plpgsql;
+
+-- ---------------------------------------------------------------------
+-- Function: scan every medicine and create a low-stock alert where sellable
+-- stock is under the reorder level and no open alert exists yet.
+-- Needed because trg_low_stock_alert only fires when stock goes DOWN, so
+-- stock that was loaded already low (seed data) would never get an alert.
+-- Returns the number of new alerts created.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_generate_low_stock_alerts() RETURNS INT AS $$
+DECLARE
+    v_count INT := 0;
+    r       RECORD;
+BEGIN
+    FOR r IN SELECT medicine_id, name, sellable_stock, reorder_level FROM v_low_stock
+    LOOP
+        IF NOT EXISTS (SELECT 1 FROM stock_alerts
+                        WHERE medicine_id = r.medicine_id
+                          AND alert_type = 'low_stock'
+                          AND NOT resolved) THEN
+            INSERT INTO stock_alerts(medicine_id, alert_type, message)
+            VALUES (r.medicine_id, 'low_stock',
+                    format('%s is below reorder level: %s in stock, reorder level %s',
+                           r.name, r.sellable_stock, r.reorder_level));
+            v_count := v_count + 1;
+        END IF;
+    END LOOP;
+    RETURN v_count;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------------------------------------------------------------------
+-- Triggers 4 and 5 (AFTER INSERT on batches / AFTER UPDATE of stock on batches)
+-- Resolve an open low-stock alert once new stock brings the medicine back
+-- to or above its reorder level (new batch received, or stock increased).
+-- Without this, an alert stayed open forever and blocked any new alert.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_resolve_low_stock_alert() RETURNS trigger AS $$
+DECLARE
+    v_total   BIGINT;
+    v_reorder INT;
+BEGIN
+    SELECT COALESCE(SUM(b.quantity_in_stock), 0), m.reorder_level
+      INTO v_total, v_reorder
+      FROM medicines m
+      LEFT JOIN batches b
+             ON b.medicine_id = m.medicine_id AND b.expiry_date >= CURRENT_DATE
+     WHERE m.medicine_id = NEW.medicine_id
+     GROUP BY m.reorder_level;
+
+    IF v_total >= v_reorder THEN
+        UPDATE stock_alerts
+           SET resolved = TRUE
+         WHERE medicine_id = NEW.medicine_id
+           AND alert_type = 'low_stock'
+           AND NOT resolved;
+    END IF;
+
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_resolve_alert_on_new_batch
+AFTER INSERT ON batches
+FOR EACH ROW EXECUTE FUNCTION fn_resolve_low_stock_alert();
+
+CREATE TRIGGER trg_resolve_alert_on_restock
+AFTER UPDATE OF quantity_in_stock ON batches
+FOR EACH ROW
+WHEN (NEW.quantity_in_stock > OLD.quantity_in_stock)
+EXECUTE FUNCTION fn_resolve_low_stock_alert();

@@ -52,7 +52,7 @@ JOIN categories c  ON c.category_id = m.category_id
 GROUP BY 1, 2
 ORDER BY 1, revenue DESC;
 
--- Q7. Customers who spent more than 500 in total (HAVING, LEFT-side filter)
+-- Q7. Customers who spent more than 500 in total (JOIN + GROUP BY + HAVING)
 SELECT c.full_name, COUNT(DISTINCT s.sale_id) AS visits, SUM(s.total_amount) AS total_spent
 FROM customers c
 JOIN sales s ON s.customer_id = c.customer_id
@@ -106,8 +106,16 @@ FROM (
 ORDER BY category, rank_in_category;
 
 -- Q12. Monthly units per medicine with a 3-month moving average
---      (CTE + window frame; this is the same idea forecast_demand.py uses)
-WITH monthly AS (
+--      (CTE + window frame; same idea forecast_demand.py uses).
+--      Months with no sales are filled with 0, so a quiet month pulls the
+--      average down instead of being skipped.
+WITH months AS (
+    SELECT generate_series(date_trunc('month', MIN(sale_date)),
+                           date_trunc('month', MAX(sale_date)),
+                           INTERVAL '1 month')::date AS month
+    FROM sales
+),
+monthly AS (
     SELECT b.medicine_id,
            date_trunc('month', s.sale_date)::date AS month,
            SUM(si.quantity) AS units
@@ -115,14 +123,20 @@ WITH monthly AS (
     JOIN sales s   ON s.sale_id = si.sale_id
     JOIN batches b ON b.batch_id = si.batch_id
     GROUP BY b.medicine_id, date_trunc('month', s.sale_date)
+),
+grid AS (
+    SELECT sold.medicine_id, mo.month
+    FROM (SELECT DISTINCT medicine_id FROM monthly) sold
+    CROSS JOIN months mo
 )
-SELECT m.name, mo.month, mo.units,
-       round(AVG(mo.units) OVER (PARTITION BY mo.medicine_id
-                                 ORDER BY mo.month
-                                 ROWS BETWEEN 2 PRECEDING AND CURRENT ROW), 1) AS moving_avg_3m
-FROM monthly mo
-JOIN medicines m ON m.medicine_id = mo.medicine_id
-ORDER BY m.name, mo.month;
+SELECT m.name, g.month, COALESCE(mo.units, 0) AS units,
+       round(AVG(COALESCE(mo.units, 0)) OVER (PARTITION BY g.medicine_id
+                                              ORDER BY g.month
+                                              ROWS BETWEEN 2 PRECEDING AND CURRENT ROW), 1) AS moving_avg_3m
+FROM grid g
+JOIN medicines m     ON m.medicine_id = g.medicine_id
+LEFT JOIN monthly mo ON mo.medicine_id = g.medicine_id AND mo.month = g.month
+ORDER BY m.name, g.month;
 
 -- Q13. Reorder suggestions: forecast demand not covered by sellable stock
 SELECT m.name, f.forecast_month, f.predicted_qty, v.sellable_stock,

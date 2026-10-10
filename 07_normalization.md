@@ -11,7 +11,7 @@ SALE_REGISTER(
   sale_id, sale_date, payment_mode, total_amount,
   customer_name, customer_phone,
   staff_name, staff_role,
-  { medicine_name, generic_name, category, manufacturer, medicine_price, reorder_level,
+  { medicine_name, generic_name, category, category_description, manufacturer, medicine_price, reorder_level,
     requires_prescription,
     batch_no, received_date, expiry_date, stock_left, purchase_price,
     supplier_name, supplier_phone, supplier_city,
@@ -28,7 +28,7 @@ Give every medicine line its own row and repeat the sale columns on each. Atomic
 ```
 SALE_LINE(sale_id, medicine_name, manufacturer, batch_no, sale_date, payment_mode, total_amount,
           customer_name, customer_phone, staff_name, staff_role,
-          generic_name, category, medicine_price, reorder_level, requires_prescription,
+          generic_name, category, category_description, medicine_price, reorder_level, requires_prescription,
           received_date, expiry_date, stock_left, purchase_price,
           supplier_name, supplier_phone, supplier_city,
           quantity, sold_price)
@@ -43,10 +43,11 @@ Functional dependencies (FDs) that hold:
 | F1 | sale_id | sale_date, payment_mode, total_amount, customer_phone, staff_name |
 | F2 | customer_phone | customer_name |
 | F3 | staff_name | staff_role |
-| F4 | (medicine_name, manufacturer) | generic_name, category, medicine_price, reorder_level, requires_prescription |
+| F4 | (medicine_name, manufacturer) | generic_name, category, category_description, medicine_price, reorder_level, requires_prescription |
 | F5 | (medicine_name, manufacturer, batch_no) | received_date, expiry_date, stock_left, purchase_price, supplier_phone |
 | F6 | supplier_phone | supplier_name, supplier_city |
 | F7 | (sale_id, medicine_name, manufacturer, batch_no) | quantity, sold_price |
+| F8 | category | category_description |
 
 ## 2NF: remove partial dependencies
 
@@ -54,7 +55,7 @@ A table is in 2NF when no non-key column depends on only part of the key. In `SA
 
 ```
 SALE(sale_id PK, sale_date, payment_mode, total_amount, customer_phone, customer_name, staff_name, staff_role)   -- from F1
-MEDICINE(medicine_name, manufacturer PK, generic_name, category, medicine_price, reorder_level, requires_prescription) -- from F4
+MEDICINE(medicine_name, manufacturer PK, generic_name, category, category_description, medicine_price, reorder_level, requires_prescription) -- from F4
 BATCH(medicine_name, manufacturer, batch_no PK, received_date, expiry_date, stock_left, purchase_price,
       supplier_phone, supplier_name, supplier_city)                                                                  -- from F5
 SALE_ITEM(sale_id, medicine_name, manufacturer, batch_no PK, quantity, sold_price)                                    -- from F7
@@ -70,7 +71,7 @@ Now every non-key column in each table depends on that table's whole key.
 |---|---|---|
 | SALE | sale_id → customer_phone → customer_name (F2) | New table `customers` |
 | SALE | sale_id → staff_name → staff_role (F3) | New table `staff` |
-| MEDICINE | key → category (a free-text value that repeats across medicines) | New table `categories` |
+| MEDICINE | (medicine_name, manufacturer) → category → category_description (F8) | New table `categories` |
 | BATCH | key → supplier_phone → supplier_name, supplier_city (F6) | New table `suppliers` |
 
 Natural keys such as `customer_phone` and the long composite medicine key are replaced by surrogate integer keys (`customer_id`, `medicine_id`, `batch_id`, ...). The natural keys stay as `UNIQUE` constraints:

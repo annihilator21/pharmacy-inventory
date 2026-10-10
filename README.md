@@ -25,11 +25,11 @@ psql -d pharmacy -v ON_ERROR_STOP=1 -f 03_sample_data.sql
 | File | What it is |
 |---|---|
 | `01_schema.sql` | 12 tables, constraints, indexes, 3 views |
-| `02_functions_triggers.sql` | 3 triggers, `fn_generate_expiry_alerts()`, `fn_receive_purchase_order()` |
+| `02_functions_triggers.sql` | 5 triggers, `fn_generate_expiry_alerts()`, `fn_generate_low_stock_alerts()`, `fn_receive_purchase_order()` |
 | `03_sample_data.sql` | Seed data with expired, near-expiry and low-stock rows (dates relative to today) |
 | `04_queries.sql` | 16 labelled queries (joins, subqueries, windows, CTEs) |
 | `05_transactions.sql` | COMMIT, ROLLBACK, SAVEPOINT and multi-table transaction demos. Run once per rebuild |
-| `06_constraint_tests.sql` | 17 PASS/FAIL tests proving the constraints and triggers reject bad data |
+| `06_constraint_tests.sql` | 18 PASS/FAIL tests proving the constraints and triggers reject bad data |
 | `07_normalization.md` | UNF to 1NF to 2NF to 3NF to BCNF write-up |
 | `er_diagram.png` / `.dot` / `.mmd` | ER diagram (image, Graphviz source, Mermaid source) |
 
@@ -38,7 +38,8 @@ psql -d pharmacy -v ON_ERROR_STOP=1 -f 03_sample_data.sql
 - A sale line is rejected if its batch is expired or the quantity exceeds the batch stock (`trg_validate_sale_item`).
 - A successful sale line reduces batch stock and adds to `sales.total_amount` (`trg_apply_sale_item`).
 - A low-stock alert is created when sellable stock drops below `reorder_level` (`trg_low_stock_alert`).
-- `SELECT fn_generate_expiry_alerts(30);` creates `near_expiry` and `expired` alerts.
+- A low-stock alert is resolved automatically when new stock arrives (a batch is inserted or its quantity goes up) and sellable stock is back at or above `reorder_level` (`trg_resolve_alert_on_new_batch`, `trg_resolve_alert_on_restock`).
+- `SELECT fn_generate_expiry_alerts(30);` creates `near_expiry` and `expired` alerts, and `SELECT fn_generate_low_stock_alerts();` creates low-stock alerts for medicines that are already below their reorder level. The sample data runs both at the end.
 
 ## Contracts for the Python scripts
 

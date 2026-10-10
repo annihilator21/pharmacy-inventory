@@ -154,6 +154,17 @@ INSERT INTO sale_items (sale_id, batch_id, quantity) VALUES
  (21, 23, 2),   -- Lantus, leaves 6
  (22, 24, 3);   -- Asthalin, leaves 7
 
+-- A batch cannot be sold before it was received: move each batch's received
+-- date back to the day before its first sale if the first sale is earlier.
+UPDATE batches b
+   SET received_date = f.first_sale::date - 1
+  FROM (SELECT si.batch_id, MIN(s.sale_date) AS first_sale
+          FROM sale_items si
+          JOIN sales s ON s.sale_id = si.sale_id
+         GROUP BY si.batch_id) f
+ WHERE f.batch_id = b.batch_id
+   AND f.first_sale::date < b.received_date;
+
 INSERT INTO purchase_orders (po_id, supplier_id, order_date, status)
 SELECT i,
        ((i - 1) % 10) + 1,
@@ -180,6 +191,11 @@ SELECT medicine_id,
        reorder_level + (medicine_id * 7 % 40),
        'seed_estimate'
   FROM medicines;
+
+-- Create the alerts the seed data should already have: low stock loaded
+-- directly (the trigger only fires when stock goes down) and expiry alerts.
+SELECT fn_generate_low_stock_alerts();
+SELECT fn_generate_expiry_alerts(30);
 
 -- Keep identity sequences ahead of the explicit ids used above
 DO $$
