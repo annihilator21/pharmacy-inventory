@@ -2,4 +2,4 @@ pandas
 psycopg2-binary
 python-dotenv
 scikit-learn
-streamlit
+streamlit>=1.50
